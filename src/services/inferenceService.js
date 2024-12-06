@@ -1,54 +1,46 @@
-const { Storage } = require('@google-cloud/storage');
-const fs = require('fs');
-const path = require('path');
-const tf = require('@tensorflow/tfjs-node');  // TensorFlow.js untuk inferensi model
-const storage = new Storage();
-const bucketName = 'mlgc-bucket';  
-const modelFileName = 'models/model.json';  
+const tf = require("@tensorflow/tfjs-node");
 
-// Fungsi untuk mengunduh model dari GCS dan memuatnya ke TensorFlow.js
-const loadModelFromGCS = async () => {
-  const tempFilePath = path.join(__dirname, 'temp_model');
-  
-  // Download model dari GCS ke direktori sementara
-  const options = {
-    destination: tempFilePath,
-  };
-  
-  await storage.bucket(bucketName).file(modelFileName).download(options);
-  console.log(`Model downloaded to ${tempFilePath}`);
-  
-  // Memuat model menggunakan TensorFlow.js
-  const model = await tf.loadLayersModel(`file://${tempFilePath}`);
-  console.log('Model loaded successfully');
-  
-  // Hapus file sementara setelah dimuat
-  fs.unlinkSync(tempFilePath);
-  
-  return model;
-};
+const InputError = require("../exceptions/InputError");
 
-// Fungsi untuk melakukan inferensi menggunakan model yang sudah dimuat
-const inferSkinCancer = async (image) => {
+async function predictClassification(model, image) {
   try {
-    // Muat model dari GCS
-    const model = await loadModelFromGCS();
-    
-    // Lakukan pre-processing pada image (misalnya resize, normalisasi, dll.)
-    const imageTensor = tf.node.decodeImage(image.data);  // Misalnya image.data adalah buffer gambar
-    const resizedImage = tf.image.resizeBilinear(imageTensor, [224, 224]);  // Sesuaikan ukuran sesuai kebutuhan
-    const normalizedImage = resizedImage.div(tf.scalar(255.0));  // Normalisasi gambar jika diperlukan
+    const tensor = tf.node
+      .decodeImage(image)
+      .resizeNearestNeighbor([224, 224])
+      .expandDims()
+      .toFloat();
 
-    // Lakukan inferensi
-    const prediction = model.predict(normalizedImage.expandDims(0));
-    const result = prediction.argMax(-1).dataSync()[0];  // Misalnya argMax untuk klasifikasi
+    const prediction = model.predict(tensor);
+    const score = await prediction.data();
+    const confidenceScore = Math.max(...score) * 100;
 
-    // Hasil inferensi
-    return result === 0 ? 'Cancer' : 'No Cancer';  // Sesuaikan logika dengan kelas model Anda
+    console.log("score: ", score);
+    console.log("confidenceScore: ", confidenceScore);
+
+    // Model akan mengembalikan array dengan rentang nilai 0 hingga 1. Di mana jika rentang nilainya di atas 50% diklasifikasikan sebagai Cancer, jika di bawah atau sama dengan 50% diklasifikasikan sebagai Non-cancer.
+    const label = confidenceScore > 50 ? "Cancer" : "Non-cancer";
+
+    let suggestion;
+
+    if (label === "Cancer") {
+      suggestion =
+        "Bersabar, jangan panik. Segera periksakan diri ke dokter untuk mendapatkan penanganan lebih lanjut.";
+    } else {
+      suggestion =
+        "Tetap jaga kesehatan dan pola hidup sehat. Jangan lupa untuk rutin periksa kesehatan.";
+    }
+
+    console.log("Predicted label: ", label); // Hasil prediksi label
+    console.log("Suggestion: ", suggestion); // Sugesti berdasarkan prediksi
+
+    return {
+      confidenceScore,
+      label,
+      suggestion: suggestion,
+    };
   } catch (error) {
-    console.error('Error during inference:', error);
-    throw new Error('Inference failed');
+    throw new InputError(`Terjadi kesalahan dalam melakukan prediksi`);
   }
-};
+}
 
-module.exports = { inferSkinCancer };
+module.exports = predictClassification;

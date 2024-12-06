@@ -1,38 +1,43 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const multer = require('multer'); // Import multer
+const Hapi = require('@hapi/hapi');
 const routes = require('./routes');
-const cors = require('cors');
+require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const loadModel = require('../services/loadModel');
+const InputError = require('../exceptions/InputError');
 
-// Multer setup untuk upload file
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, './uploads');  
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname); // Menyimpan dengan nama unik
-    },
-});
-
-const upload = multer({ storage: storage });
-
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use('/', routes);
-app.use(cors());
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    const statusCode = err.status || 500;
-    res.status(statusCode).json({
-        status: 'fail',
-        message: err.message || 'Internal Server Error',
+(async () => {
+    const server = Hapi.server({
+        port: 3000,
+        host: '0.0.0.0',
+        routes: {
+            cors: {
+              origin: ['*'],
+            },
+        },
     });
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+    server.route(routes); 
+    server.ext('onPreResponse', function (request, h) {
+        const response = request.response;
+        if (response instanceof InputError) {
+            const newResponse = h.response({
+                status: 'fail',
+                message: 'Terjadi kesalahan dalam melakukan prediksi'
+            })
+            newResponse.code(response.statusCode)
+            return newResponse;
+        }
+        if (response.isBoom) {
+            const newResponse = h.response({
+                status: 'fail',
+                message: response.message
+            })
+            newResponse.code(response.output.statusCode)
+            return newResponse;
+        }
+        return h.continue;
+    });    
+    const model = await loadModel();
+    server.app.model = model;
+    await server.start();
+    console.log(`Server start at: ${server.info.uri}`);
+})();

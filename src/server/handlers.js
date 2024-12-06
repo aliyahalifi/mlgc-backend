@@ -1,52 +1,50 @@
-const { inferSkinCancer } = require('../services/inferenceService');
-const { savePrediction, getPredictions } = require('../services/firestoreService');
+const getHistories = require("../services/getHistories");
+const predictClassification = require("../services/inferenceService");
+const storeData = require("../services/firestoreService");
+const crypto = require("crypto");
 
-const predictHandler = async (req, res, next) => {
-    try {
-        if (!req.files || !req.files.image) {
-            throw new Error('Image file is required');
-        }
+async function postPredictHandler(request, h) {
+    const { image } = request.payload;
+    const { model } = request.server.app;
 
-        const image = req.files.image;
+    const { label } = await predictClassification(model, image);
 
-        if (image.size > 1000000) {
-            return res.status(413).json({
-                status: 'fail',
-                message: 'Payload content length greater than maximum allowed: 1000000',
-            });
-        }
-
-        const result = await inferSkinCancer(image);
-        const suggestion =
-            result === 'Cancer'
-                ? 'Segera periksa ke dokter!'
-                : 'Penyakit kanker tidak terdeteksi.';
-        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const createdAt = new Date().toISOString();
-
-        const prediction = { id, result, suggestion, createdAt };
-        await savePrediction(prediction);
-
-        res.status(200).json({
-            status: 'success',
-            message: 'Model is predicted successfully',
-            data: prediction,
-        });
-    } catch (error) {
-        next(error);
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    
+    const data = {
+        "id": id,
+        "result": label,
+        "suggestion": label == 'Cancer' ? 'Segera hubungi dokter' : 'Penyakit kanker tidak terdeteksi.',
+        "createdAt": createdAt
     }
-};
 
-const historyHandler = async (req, res, next) => {
+    await storeData(id, data);
+
+    const response = h.response({
+        status: 'success',
+        message: 'Model is predicted successfully',
+        data
+    })
+    response.code(201);
+    return response;
+}
+
+async function getHistoriesHandler(_request, h) {
     try {
-        const histories = await getPredictions();
-        res.status(200).json({
-            status: 'success',
-            data: histories,
-        });
-    } catch (error) {
-        next(error);
+        const histories = await getHistories();
+    
+        return h.response({
+          status: 'success',
+          data: histories,
+        }).code(200);
+      } catch (error) {
+        console.error('Error in getHistoriesHandler:', error.message);
+        return h.response({
+          status: 'fail',
+          message: 'Failed to fetch histories',
+        }).code(500);
+      }
     }
-};
 
-module.exports = { predictHandler, historyHandler };
+module.exports = {postPredictHandler, getHistoriesHandler};

@@ -1,18 +1,25 @@
-const { Firestore } = require('@google-cloud/firestore');
-const firestore = new Firestore();
+var admin = require("firebase-admin");
+let app;
 
-const COLLECTION_NAME = 'predictions';
+if (!admin.apps.length) {
+  app = admin.initializeApp({
+    credential: admin.credential.cert(require("./serviceAccountKey.json")),
+  });
+} else {
+  app = admin.app();
+}
 
-const savePrediction = async (data) => {
-    const docRef = firestore.collection(COLLECTION_NAME).doc(data.id);
-    await docRef.set(data);
-};
+const db = admin.firestore();
 
-const getPredictions = async () => {
-    const snapshot = await firestore.collection(COLLECTION_NAME).get();
-    const predictions = [];
-    snapshot.forEach((doc) => predictions.push({ id: doc.id, history: doc.data() }));
-    return predictions;
-};
+async function storeData(id, data) {
+  try {
+    const predictCollection = db.collection("predictions");
+    await predictCollection.doc(id).set(data);
+    console.log(`Document with ID: ${id} stored successfully`);
+  } catch (error) {
+    console.error("Error storing data to Firestore:", error);
+    throw error;
+  }
+}
 
-module.exports = { savePrediction, getPredictions };
+module.exports = storeData;

@@ -1,14 +1,16 @@
 const tf = require('@tensorflow/tfjs-node');
-const { Storage } = require('@google-cloud/storage');
 
-const BUCKET_NAME = 'mlgc-bucket';
-const MODEL_PATH = 'model/model.json';
-
-const loadModelFromBucket = async () => {
-    const storage = new Storage();
-    const [files] = await storage.bucket(BUCKET_NAME).getFiles({ prefix: 'model/' });
-    const model = await tf.loadLayersModel(`gs://${BUCKET_NAME}/${MODEL_PATH}`);
+async function loadModel() {
+  try {
+    const model = await tf.loadGraphModel(
+      'https://storage.googleapis.com/mlgc-bucket-aliyah/model.json'
+    );
+    console.log('Model loaded successfully');
     return model;
-};
+  } catch (error) {
+    console.error('Error loading model:', error.message);
+    throw error;
+  }
+}
 
-module.exports = { loadModelFromBucket };
+module.exports = loadModel;

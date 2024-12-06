@@ -1,12 +1,23 @@
-const express = require('express');
-const { predictHandler, historyHandler } = require('./handlers');
-const multer = require('multer');
-
-const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
-
-// Routes
-router.post('/predict', upload.single('image'), predictHandler);
-router.get('/predict/histories', historyHandler);
-
-module.exports = router;
+const { postPredictHandler, getHistoriesHandler } = require('./handlers');
+ 
+const routes = [
+  {
+    path: '/predict',
+    method: 'POST',
+    handler: postPredictHandler,
+    options: {
+      payload: {
+        allow: 'multipart/form-data',
+        multipart: true,
+        maxBytes: 1000000
+      }
+    }
+  },
+  {
+    path: '/predict/histories',
+    method: 'GET',
+    handler: getHistoriesHandler
+  }  
+]
+ 
+module.exports = routes;
